@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Крестики-Нолики | Игра вдвоём</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(145deg, #1a1f2e 0%, #0e121f 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Poppins', 'Quicksand', system-ui, -apple-system, sans-serif;
+            padding: 1.5rem;
+        }
+
+        /* Игровой контейнер */
+        .game-container {
+            background: rgba(22, 28, 46, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 3rem;
+            padding: 1.8rem 2rem 2rem;
+            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(120, 150, 255, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        h1 {
+            text-align: center;
+            font-weight: 700;
+            font-size: 2.1rem;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #E0E7FF, #A0B5FF);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            margin-bottom: 0.75rem;
+        }
+
+        /* Информационная панель */
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+            margin: 0.5rem 0 1.5rem;
+            background: #0b0f1c80;
+            border-radius: 4rem;
+            padding: 0.4rem 1.8rem;
+            backdrop-filter: blur(4px);
+        }
+
+        .status-card {
+            background: #11161f;
+            padding: 0.4rem 1.2rem;
+            border-radius: 3rem;
+            font-weight: 600;
+            font-size: 1.3rem;
+            color: #eaf4ff;
+            box-shadow: inset 0 1px 2px #2a3448, 0 5px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .status-card span {
+            color: #ffd966;
+            font-weight: 700;
+            margin-left: 8px;
+            letter-spacing: 1px;
+        }
+
+        .turn-icon {
+            display: inline-block;
+            width: 32px;
+            text-align: center;
+            font-size: 1.7rem;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+
+        /* Игровое поле (3x3) */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 1rem;
+            border-radius: 2.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: inset 0 0 8px #00000040, 0 15px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .cell {
+            aspect-ratio: 1 / 1;
+            min-width: 85px;
+            background: linear-gradient(145deg, #1e263b, #12172a);
+            border-radius: 1.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            box-shadow: 0 8px 0 #080c16;
+            border: 1px solid rgba(90, 130, 220, 0.4);
+            color: #f2f6ff;
+            text-shadow: 0 2px 5px #00000050;
+        }
+
+        /* Ховер и активность */
+        .cell:hover:not(.disabled-cell) {
+            transform: translateY(-3px);
+            background: linear-gradient(145deg, #232d48, #181f36);
+            box-shadow: 0 10px 0 #080c16;
+            border-color: #7f9eff;
+        }
+
+        .cell:active:not(.disabled-cell) {
+            transform: translateY(3px);
+            box-shadow: 0 4px 0 #080c16;
+        }
+
+        /* Оформление разных символов */
+        .cell.X {
+            color: #6ee7ff;
+            text-shadow: 0 0 12px #00ccff;
+        }
+
+        .cell.O {
+            color: #ffb347;
+            text-shadow: 0 0 12px #ff8c00;
+        }
+
+        /* Победная подсветка */
+        .cell.winner-cell {
+            background: radial-gradient(circle at 30% 20%, #3e5a6b, #1a3f4a);
+            box-shadow: 0 0 15px #7bc5ff, inset 0 0 8px #b5e4ff;
+            border-color: #ffdd99;
+            color: #fff3c9;
+            transform: scale(0.98);
+        }
+
+        /* Заблокированная ячейка (конец игры) */
+        .disabled-cell {
+            cursor: default;
+            filter: brightness(0.9);
+        }
+
+        /* Кнопка сброса */
+        .reset-btn {
+            display: block;
+            width: 80%;
+            margin: 0 auto;
+            background: linear-gradient(95deg, #2c3650, #151e30);
+            border: none;
+            font-size: 1.3rem;
+            font-weight: bold;
+            padding: 0.7rem 1rem;
+            border-radius: 3rem;
+            color: #d6e6ff;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+            letter-spacing: 1px;
+            box-shadow: 0 6px 0 #06080f;
+            border: 1px solid #5577bb40;
+        }
+
+        .reset-btn:hover {
+            background: linear-gradient(95deg, #3f4b6e, #1f2a44);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 0 #06080f;
+            color: white;
+        }
+
+        .reset-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 3px 0 #06080f;
+        }
+
+        /* анимация появления символов */
+        @keyframes pop {
+            0% {
+                transform: scale(0.3);
+                opacity: 0;
+            }
+            80% {
+                transform: scale(1.1);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .cell.X, .cell.O {
+            animation: pop 0.2s ease-out forwards;
+        }
+
+        /* адаптивность */
+        @media (max-width: 550px) {
+            .game-container {
+                padding: 1rem 1.2rem 1.5rem;
+            }
+            .board {
+                gap: 0.7rem;
+                padding: 0.8rem;
+            }
+            .cell {
+                min-width: 70px;
+                font-size: 3.8rem;
+            }
+            .status-card {
+                font-size: 1rem;
+                padding: 0.2rem 1rem;
+            }
+            .turn-icon {
+                width: 26px;
+                font-size: 1.4rem;
+            }
+            h1 {
+                font-size: 1.6rem;
+            }
+        }
+
+        @media (max-width: 450px) {
+            .cell {
+                min-width: 65px;
+                font-size: 3.2rem;
+            }
+            .board {
+                gap: 0.5rem;
+            }
+        }
+
+        footer {
+            text-align: center;
+            color: #7a86aa;
+            font-size: 0.7rem;
+            margin-top: 1rem;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <h1>✧ КРЕСТИКИ-НОЛИКИ ✧</h1>
+    <div class="info-panel">
+        <div class="status-card">
+            📍 СТАТУС
+        </div>
+        <div class="status-card" id="gameStatus">
+            ⚡ ХОД: <span id="turnDisplay">X</span>
+            <span id="turnIcon" class="turn-icon">❌</span>
+        </div>
+    </div>
+
+    <!-- Игровая доска 3x3 -->
+    <div class="board" id="board">
+        <!-- 9 ячеек будут созданы через JS, но для удобства структуры напишем вручную, но проще динамически, чтобы меньше кода.
+         Однако, чтобы было наглядно и стили сразу, создадим через JS инициализацию, или прописать div'ы. Лучше -->
+    </div>
+
+    <button class="reset-btn" id="resetGameBtn">⟳ НОВАЯ ИГРА ⟳</button>
+    <footer>игра для двоих | X начинает первым</footer>
+</div>
+
+<script>
+    (function(){
+        // --- Игровые переменные ---
+        let board = Array(9).fill(null);    // null / 'X' / 'O'
+        let currentPlayer = 'X';            // X всегда начинает
+        let gameActive = true;
+        let winningCombo = null;             // массив индексов победной линии (для подсветки)
+        
+        // DOM элементы
+        const boardContainer = document.getElementById('board');
+        const turnDisplaySpan = document.getElementById('turnDisplay');
+        const turnIconSpan = document.getElementById('turnIcon');
+        const resetBtn = document.getElementById('resetGameBtn');
+        const gameStatusDiv = document.getElementById('gameStatus'); // используем для дополнительного сообщения, но основной статус внутри.
+
+        // Выигрышные комбинации (8 линий)
+        const winPatterns = [
+            [0,1,2], [3,4,5], [6,7,8],  // горизонтали
+            [0,3,6], [1,4,7], [2,5,8],  // вертикали
+            [0,4,8], [2,4,6]            // диагонали
+        ];
+
+        // --- Создание игрового поля (рендер ячеек) ---
+        function createBoardUI() {
+            boardContainer.innerHTML = '';
+            for(let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.setAttribute('data-index', i);
+                cell.addEventListener('click', () => onCellClick(i));
+                boardContainer.appendChild(cell);
+            }
+            updateBoardUI();
+        }
+
+        // Обновить отображение досок: тексты и классы X/O, победная подсветка
+        function updateBoardUI() {
+            const cells = document.querySelectorAll('.cell');
+            for(let i = 0; i < cells.length; i++) {
+                const cell = cells[i];
+                const value = board[i];
+                // очищаем все динамические классы (но winner-cell пока сохраняем? лучше сначала сбросить победную подсветку, но она будет перезадана в конце игры)
+                cell.classList.remove('X', 'O', 'winner-cell');
+                if(value === 'X') {
+                    cell.classList.add('X');
+                    cell.textContent = '✖';   // крестик
+                } else if(value === 'O') {
+                    cell.classList.add('O');
+                    cell.textContent = '◯';   // нолик
+                } else {
+                    cell.textContent = '';
+                }
+                // Если игра не активна и ячейка пустая — заблокировать внешний вид (но клик заблокирован логикой)
+                if(!gameActive || winningCombo !== null) {
+                    cell.classList.add('disabled-cell');
+                } else {
+                    cell.classList.remove('disabled-cell');
+                }
+            }
+            
+            // Подсветка победных ячеек, если игра закончена победой
+            if(winningCombo && gameActive === false) {
+                for(let idx of winningCombo) {
+                    const winnerCells = document.querySelectorAll('.cell');
+                    if(winnerCells[idx]) winnerCells[idx].classList.add('winner-cell');
+                }
+            }
+        }
+        
+        // Добавить подсветку только после победы (вызывается при завершении)
+        function highlightWinningCells(combo) {
+            if(!combo) return;
+            const cells = document.querySelectorAll('.cell');
+            for(let idx of combo) {
+                cells[idx].classList.add('winner-cell');
+            }
+        }
+        
+        // Обновление текста статуса (чей ход, либо победа/ничья)
+        function updateStatusMessage(message, isGameEnd = false) {
+            if(isGameEnd) {
+                // выводим сообщение в панели статуса с изменением структуры
+                gameStatusDiv.innerHTML = `🎯 ${message}`;
+                return;
+            }
+            // обычный ход
+            const symbol = currentPlayer === 'X' ? '✖' : '◯';
+            gameStatusDiv.innerHTML = `⚡ ХОД: <span id="turnDisplay">${currentPlayer}</span> <span id="turnIcon" class="turn-icon">${symbol}</span>`;
+            // обновляем ссылки на элементы (чтобы не ломать)
+            document.getElementById('turnDisplay').innerText = currentPlayer;
+            const iconSpan = document.getElementById('turnIcon');
+            if(iconSpan) iconSpan.innerText = symbol;
+        }
+        
+        // Проверка победителя, возвращает { winner: 'X'/'O' или null, combo: [] }
+        function checkWinner() {
+            for(let pattern of winPatterns) {
+                const [a,b,c] = pattern;
+                if(board[a] && board[a] === board[b] && board[a] === board[c]) {
+                    return { winner: board[a], combo: pattern };
+                }
+            }
+            return { winner: null, combo: null };
+        }
+        
+        // Проверка ничьи (все клетки заполнены и нет победителя)
+        function isDraw() {
+            return board.every(cell => cell !== null);
+        }
+        
+        // Завершить игру: победитель или ничья
+        function endGame(winner, winningComboArray = null) {
+            gameActive = false;
+            winningCombo = winningComboArray;
+            
+            if(winner) {
+                // Победитель!
+                const winnerSymbol = winner === 'X' ? '✖ (Крестики)' : '◯ (Нолики)';
+                updateStatusMessage(`🏆 ПОБЕДА! ${winnerSymbol} 🏆`, true);
+                // Подсвечиваем победные клетки
+                if(winningComboArray) {
+                    highlightWinningCells(winningComboArray);
+                }
+            } else {
+                // Ничья
+                updateStatusMessage(`🤝 НИЧЬЯ! Сыграйте снова 🤝`, true);
+            }
+            // Блокируем дальнейшие клики по клеткам через флаг, а также добавим классы disabled-cell
+            updateBoardUI();  // обновляет disabled-cell состояние
+        }
+        
+        // Сброс игры (новая игра)
+        function resetGame() {
+            // очищаем массив доски
+            board.fill(null);
+            currentPlayer = 'X';
+            gameActive = true;
+            winningCombo = null;
+            // сбросить UI
+            updateBoardUI();
+            // обновить статус хода
+            updateStatusMessage('', false);
+            // явно пересоздаем отображение статуса
+            gameStatusDiv.innerHTML = `⚡ ХОД: <span id="turnDisplay">X</span> <span id="turnIcon" class="turn-icon">✖</span>`;
+            // убрать любые лишние классы disabled-cell (обновление уже сняло)
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.classList.remove('winner-cell', 'disabled-cell');
+            });
+            // повторно убедимся, что клики активны
+        }
+        
+        // Обработка клика по ячейке
+        function onCellClick(index) {
+            // 1. Если игра не активна → нельзя ходить
+            if(!gameActive) return;
+            // 2. Если ячейка уже занята
+            if(board[index] !== null) return;
+            
+            // Ставим символ текущего игрока
+            board[index] = currentPlayer;
+            // Обновляем UI
+            updateBoardUI();
+            
+            // Проверка на победу после хода
+            const { winner, combo } = checkWinner();
+            if(winner) {
+                endGame(winner, combo);
+                return;
+            }
+            
+            // Проверка на ничью
+            if(isDraw()) {
+                endGame(null, null);
+                return;
+            }
+            
+            // Смена игрока
+            currentPlayer = (currentPlayer === 'X') ? 'O' : 'X';
+            // Обновляем статусную строку (ход сменился)
+            updateStatusMessage('', false);
+        }
+        
+        // Дополнительная инициализация и обработка кнопки сброса
+        function initGame() {
+            createBoardUI();    // создание 9 ячеек с обработчиками
+            resetGame();        // начальное состояние: все пусто, first player X
+            // добавить слушатель на кнопку сброса
+            resetBtn.addEventListener('click', () => {
+                resetGame();
+            });
+        }
+        
+        // Запуск игры
+        initGame();
+    })();
+</script>
+</body>
+</html>
