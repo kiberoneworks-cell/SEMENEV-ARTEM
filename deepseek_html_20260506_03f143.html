@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Flappy Bird | классический флэп-геймплей</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #0b2b2f, #0a1c1f);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', 'VT323', 'Segoe UI', monospace;
+            font-weight: bold;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 20px 15px 25px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 2.5rem;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 20px 35px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.1);
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 28px;
+            box-shadow: 0 0 0 3px #f5e3b0, 0 18px 28px black;
+            background-color: #50c0d0;
+            cursor: pointer;
+        }
+
+        .score-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            max-width: 400px;
+            background: #1e2a32cc;
+            backdrop-filter: blur(4px);
+            border-radius: 60px;
+            padding: 6px 24px;
+            gap: 2rem;
+            border: 1px solid #ffdb7e;
+        }
+
+        .score-box, .best-box {
+            background: #030b12;
+            padding: 5px 18px;
+            border-radius: 40px;
+            color: #ffefb0;
+            text-shadow: 0 0 3px #ffb347;
+            font-size: 1.7rem;
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        .score-box span, .best-box span {
+            font-size: 0.9rem;
+            color: #bbd9ff;
+            margin-right: 8px;
+            text-shadow: none;
+        }
+
+        button {
+            background: #e2a526;
+            border: none;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 1.2rem;
+            padding: 6px 26px;
+            border-radius: 40px;
+            letter-spacing: 1px;
+            color: #1e2c2c;
+            cursor: pointer;
+            transition: 0.1s linear;
+            box-shadow: 0 5px 0 #7a4c1a;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #7a4c1a;
+        }
+
+        .info-tip {
+            font-size: 0.75rem;
+            background: #00000070;
+            padding: 4px 14px;
+            border-radius: 30px;
+            color: #ddf4ff;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <canvas id="flappyCanvas" width="400" height="600"></canvas>
+    <div class="score-panel">
+        <div class="score-box"><span>🐤 СЧЁТ</span> <span id="currentScore">0</span></div>
+        <div class="best-box"><span>🏆 РЕКОРД</span> <span id="highScoreVal">0</span></div>
+        <button id="restartButton">🔄 СТАРТ</button>
+    </div>
+    <div class="info-tip">
+        ␣ ПРОБЕЛ / КЛИК МЫШЬЮ / ТАП — чтобы взлететь
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- НАСТРОЙКИ CANVAS ----------
+        const canvas = document.getElementById('flappyCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = 400, H = 600;
+        canvas.width = W;
+        canvas.height = H;
+
+        // ---------- ИГРОВЫЕ ПАРАМЕТРЫ ----------
+        let gameRunning = true;      // активна ли игра (false = game over)
+        let score = 0;
+        let highScore = 0;
+        
+        // ----- ПТИЦА -----
+        const BIRD_RADIUS = 12;
+        let bird = {
+            x: 70,
+            y: H / 2,
+            vy: 0,
+            gravity: 0.23,
+            jumpPower: -5.2,
+            rotation: 0
+        };
+        
+        // ----- ТРУБЫ -----
+        let pipes = [];
+        const PIPE_WIDTH = 55;
+        const PIPE_GAP = 145;       // высота прохода между трубами
+        const PIPE_SPACING = 210;    // расстояние между центрами труб (по X)
+        let frameCounter = 0;
+        let spawnPipeCounter = 0;
+        const SPAWN_INTERVAL_FRAMES = 85;   // кадры между генерацией новых труб
+        
+        // базовая скорость движения труб (пикселей за кадр)
+        let scrollSpeed = 2.4;
+        
+        // ----- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ -----
+        function loadHighScore() {
+            let saved = localStorage.getItem('flappyHigh');
+            if(saved && !isNaN(parseInt(saved))) {
+                highScore = parseInt(saved);
+            } else {
+                highScore = 0;
+            }
+            document.getElementById('highScoreVal').innerText = highScore;
+        }
+        
+        function updateHighScore() {
+            if(score > highScore) {
+                highScore = score;
+                localStorage.setItem('flappyHigh', highScore);
+                document.getElementById('highScoreVal').innerText = highScore;
+            }
+        }
+        
+        function updateScoreUI() {
+            document.getElementById('currentScore').innerText = score;
+        }
+        
+        // Сброс игры (полная перезагрузка)
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            updateScoreUI();
+            // Сброс птицы
+            bird.y = H / 2;
+            bird.vy = 0;
+            bird.rotation = 0;
+            // Очистить трубы
+            pipes = [];
+            frameCounter = 0;
+            spawnPipeCounter = 10;   // небольшой таймаут для плавного старта
+            scrollSpeed = 2.4;
+            updateHighScore();       // синхронизируем рекорд в UI
+        }
+        
+        // Создать новую пару труб (верхняя и нижняя)
+        function addPipe() {
+            // минимальная высота верхней трубы: от 60 до 270 пикселей, чтобы проход был в пределах экрана
+            const minTopHeight = 60;
+            const maxTopHeight = H - PIPE_GAP - 70;
+            let topHeight = Math.floor(Math.random() * (maxTopHeight - minTopHeight + 1) + minTopHeight);
+            // но для баланса ограничим сверху и снизу
+            topHeight = Math.min(maxTopHeight, Math.max(minTopHeight, topHeight));
+            const bottomY = topHeight + PIPE_GAP;
+            const bottomHeight = H - bottomY;
+            
+            pipes.push({
+                x: W,
+                topHeight: topHeight,
+                bottomY: bottomY,
+                bottomHeight: bottomHeight,
+                width: PIPE_WIDTH,
+                counted: false    // для начисления очков (когда птица прошла трубу)
+            });
+        }
+        
+        // Обновление логики: движение, столкновения, очки
+        function updateGame() {
+            if(!gameRunning) return;
+            
+            // 1. Физика птицы
+            bird.vy += bird.gravity;
+            bird.y += bird.vy;
+            
+            // Вращение (анимация наклона)
+            if(bird.vy < 0) {
+                bird.rotation = -0.35;
+            } else {
+                bird.rotation = Math.min(0.7, bird.vy * 0.08);
+            }
+            
+            // 2. Движение труб (влево)
+            for(let i=0; i<pipes.length; i++) {
+                pipes[i].x -= scrollSpeed;
+            }
+            // удалить трубы, вышедшие за левую границу
+            pipes = pipes.filter(p => p.x + PIPE_WIDTH > 0);
+            
+            // 3. Генерация новых труб по таймеру
+            if(spawnPipeCounter <= 0) {
+                addPipe();
+                spawnPipeCounter = SPAWN_INTERVAL_FRAMES;
+            } else {
+                spawnPipeCounter--;
+            }
+            
+            // 4. Начисление очков: если птица миновала трубу и счет не засчитан
+            for(let pipe of pipes) {
+                if(!pipe.counted && pipe.x + PIPE_WIDTH < bird.x - BIRD_RADIUS) {
+                    pipe.counted = true;
+                    score++;
+                    updateScoreUI();
+                    updateHighScore();
+                    // легкий звуковой эффект (без звука, но визуальный)
+                }
+            }
+            
+            // 5. ПРОВЕРКА СТОЛКНОВЕНИЙ (Стены + трубы)
+            // Границы пола и потолка
+            if(bird.y - BIRD_RADIUS <= 0) {
+                bird.y = BIRD_RADIUS;
+                // столкновение с потолком = смерть
+                gameRunning = false;
+                return;
+            }
+            if(bird.y + BIRD_RADIUS >= H) {
+                gameRunning = false;
+                return;
+            }
+            
+            // Столкновения с трубами
+            for(let pipe of pipes) {
+                // проверка пересечения по X
+                if(bird.x + BIRD_RADIUS > pipe.x && bird.x - BIRD_RADIUS < pipe.x + PIPE_WIDTH) {
+                    // верхняя труба: она от y=0 до pipe.topHeight
+                    if(bird.y - BIRD_RADIUS < pipe.topHeight) {
+                        gameRunning = false;
+                        return;
+                    }
+                    // нижняя труба: от pipe.bottomY до H
+                    if(bird.y + BIRD_RADIUS > pipe.bottomY) {
+                        gameRunning = false;
+                        return;
+                    }
+                }
+            }
+            
+            // Доп. защита: избежать застревания за трубами (просто)
+        }
+        
+        // ---------- ОТРИСОВКА ВСЕГО ----------
+        function drawBackground() {
+            // Небо градиент
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, '#6dcff6');
+            grad.addColorStop(1, '#3ba0c0');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+            
+            // Облачка
+            ctx.fillStyle = '#ffffffc0';
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.ellipse(70, 70, 45, 35, 0, 0, Math.PI*2);
+            ctx.ellipse(130, 50, 50, 40, 0, 0, Math.PI*2);
+            ctx.ellipse(200, 85, 55, 40, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(300, 110, 48, 38, 0, 0, Math.PI*2);
+            ctx.ellipse(360, 80, 44, 35, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#ddf4ffcc';
+            ctx.beginPath();
+            ctx.ellipse(50, 420, 70, 45, 0, 0, Math.PI*2);
+            ctx.fill();
+        }
+        
+        function drawGround() {
+            ctx.fillStyle = '#945b2e';
+            ctx.fillRect(0, H-42, W, 42);
+            ctx.fillStyle = '#c28a47';
+            for(let i=0;i<12;i++) {
+                ctx.fillRect(i*35, H-38, 20, 6);
+            }
+            ctx.fillStyle = '#6b3f1a';
+            ctx.fillRect(0, H-12, W, 12);
+            // травка
+            ctx.fillStyle = '#83a642';
+            for(let i=0;i<10;i++) {
+                ctx.fillRect(i*45+10, H-47, 6, 12);
+            }
+        }
+        
+        function drawPipes() {
+            for(let pipe of pipes) {
+                // Верхняя труба
+                ctx.fillStyle = '#377a3e';
+                ctx.shadowBlur = 4;
+                ctx.fillRect(pipe.x, 0, PIPE_WIDTH, pipe.topHeight);
+                ctx.fillStyle = '#2c6130';
+                ctx.fillRect(pipe.x - 8, pipe.topHeight - 32, PIPE_WIDTH+16, 32);
+                ctx.fillStyle = '#5e9944';
+                ctx.fillRect(pipe.x - 3, pipe.topHeight - 20, PIPE_WIDTH+6, 22);
+                
+                // Нижняя труба
+                const bottomStartY = pipe.bottomY;
+                ctx.fillStyle = '#377a3e';
+                ctx.fillRect(pipe.x, bottomStartY, PIPE_WIDTH, pipe.bottomHeight);
+                ctx.fillStyle = '#2c6130';
+                ctx.fillRect(pipe.x - 8, bottomStartY, PIPE_WIDTH+16, 32);
+                ctx.fillStyle = '#5e9944';
+                ctx.fillRect(pipe.x - 3, bottomStartY, PIPE_WIDTH+6, 22);
+                // детали ободков
+                ctx.fillStyle = '#a5d26b';
+                ctx.fillRect(pipe.x+5, pipe.topHeight-8, PIPE_WIDTH-10, 8);
+                ctx.fillStyle = '#a5d26b';
+                ctx.fillRect(pipe.x+5, bottomStartY, PIPE_WIDTH-10, 8);
+            }
+            ctx.shadowBlur = 0;
+        }
+        
+        function drawBird() {
+            ctx.save();
+            ctx.translate(bird.x, bird.y);
+            ctx.rotate(bird.rotation);
+            // Тело
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = "#00000050";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, BIRD_RADIUS, BIRD_RADIUS*0.9, 0, 0, Math.PI*2);
+            ctx.fillStyle = '#f6ca2e';
+            ctx.fill();
+            ctx.fillStyle = '#e09d1e';
+            ctx.beginPath();
+            ctx.ellipse(-3, -2, 3, 3, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(3, -2, 2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(4, -3, 1, 0, Math.PI*2);
+            ctx.fill();
+            // клюв
+            ctx.beginPath();
+            ctx.moveTo(10, -1);
+            ctx.lineTo(16, 0);
+            ctx.lineTo(10, 3);
+            ctx.fillStyle = '#ff8c42';
+            ctx.fill();
+            // хохолок
+            ctx.beginPath();
+            ctx.moveTo(-5, -8);
+            ctx.lineTo(-2, -14);
+            ctx.lineTo(2, -9);
+            ctx.fillStyle = '#eeaa30';
+            ctx.fill();
+            // крыло
+            ctx.beginPath();
+            ctx.moveTo(-4, 4);
+            ctx.quadraticCurveTo(-12, 2, -7, 8);
+            ctx.fillStyle = '#e5b022';
+            ctx.fill();
+            ctx.restore();
+            ctx.shadowBlur = 0;
+        }
+        
+        function drawScoreOnCanvas() {
+            ctx.font = "bold 34px 'Courier New', monospace";
+            ctx.fillStyle = "#fff3cf";
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = "#00000080";
+            ctx.fillText(score, W/2 - 20, 65);
+            ctx.font = "bold 16px monospace";
+            ctx.fillStyle = "#fff1b5";
+            ctx.fillText("FLAP", W/2-35, 110);
+            ctx.shadowBlur = 0;
+        }
+        
+        function drawGameOver() {
+            if(!gameRunning) {
+                ctx.fillStyle = "rgba(0,0,0,0.68)";
+                ctx.fillRect(0, 0, W, H);
+                ctx.font = "bold 34px 'Courier New', monospace";
+                ctx.fillStyle = "#ffbe76";
+                ctx.shadowBlur = 0;
+                ctx.fillText("GAME OVER", W/2-110, H/2-45);
+                ctx.font = "20px monospace";
+                ctx.fillStyle = "#f0eac1";
+                ctx.fillText("нажми СТАРТ / ПРОБЕЛ", W/2-130, H/2+35);
+                ctx.font = "18px monospace";
+                ctx.fillStyle = "#d1e7ff";
+                ctx.fillText("СЧЁТ: "+score, W/2-48, H/2+95);
+            }
+        }
+        
+        // --- Полноценный рендер всего ---
+        function render() {
+            drawBackground();
+            drawPipes();
+            drawGround();
+            drawBird();
+            drawScoreOnCanvas();
+            drawGameOver();
+            // дополнительные частицы после столкновения - необязательно
+        }
+        
+        // --- Управление игроком (прыжок) ---
+        function jump() {
+            if(!gameRunning) {
+                // если игра окончена, по прыжку делаем рестарт (удобство)
+                restartGame();
+                return;
+            }
+            // обычный прыжок
+            bird.vy = bird.jumpPower;
+            // лёгкий звуковой эффект визуально: небольшая вспышка (чисто визуально)
+        }
+        
+        // --- Обработчики событий ---
+        function handleTap(e) {
+            e.preventDefault();
+            jump();
+        }
+        
+        // --- Сброс через кнопку ---
+        const restartBtn = document.getElementById('restartButton');
+        restartBtn.addEventListener('click', () => {
+            restartGame();
+        });
+        
+        // --- Плавный цикл анимации ---
+        let lastTimestamp = 0;
+        function gameLoop() {
+            updateGame();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // --- Инициализация и установка слушателей ---
+        function init() {
+            loadHighScore();
+            restartGame();    // начальное состояние: трубы пусты, птица по центру, игра активна
+            // создадим пару стартовых труб, чтобы не было пусто (чуть позже в restart добавим инициализацию)
+            // улучшим restart для генерации первых труб
+        }
+        
+        // Доработаем restart, чтобы спавнить трубы динамически
+        const originalRestart = restartGame;
+        window.restartGame = restartGame;
+        restartGame = function() {
+            originalRestart();
+            pipes = [];
+            frameCounter = 0;
+            spawnPipeCounter = 25;  // небольшая задержка перед первой трубой
+            // добавим одну трубу на старте через малый тик, чтобы не было пустого поля
+            setTimeout(() => {
+                if(gameRunning && pipes.length === 0) {
+                    addPipe();
+                }
+            }, 20);
+        }.bind(this);
+        
+        // переопределим restart для консистенции
+        restartGame();
+        
+        // слушатели нажатий
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'Space' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                jump();
+            }
+        });
+        canvas.addEventListener('click', (e) => {
+            e.preventDefault();
+            jump();
+        });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+        // также для мобильных
+        window.addEventListener('touchstart', (e) => {
+            if(e.target === canvas || canvas.contains(e.target)) {
+                e.preventDefault();
+                jump();
+            }
+        });
+        
+        // финальный запуск
+        init();
+        // дополнительно добавим начальную трубу для быстрого старта
+        setTimeout(() => {
+            if(pipes.length === 0 && gameRunning) addPipe();
+        }, 50);
+        gameLoop();
+    })();
+</script>
+</body>
+</html>
